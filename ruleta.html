@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LoL Champion Roulette</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #222;
+      color: #eee;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    /* Two-column layout for the app */
+    #appContainer {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    /* Left column: the roulette */
+    #leftColumn {
+      width: 520px;
+      text-align: center;
+    }
+    #wheelContainer {
+      position: relative;
+      width: 500px;
+      height: 500px;
+      margin: 0 auto;
+    }
+    #wheelCanvas {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: #333;
+    }
+    #pointer {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 20px solid transparent;
+      border-right: 20px solid transparent;
+      border-bottom: 40px solid #f00;
+      z-index: 10;
+    }
+    #spinBtn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 20px;
+      border: none;
+      background: #f90;
+      color: #222;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #spinBtn:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+    /* Right column: preview/result panel */
+    #rightColumn {
+      width: 500px;
+      background: #444;
+      padding: 20px;
+      border-radius: 10px;
+      min-height: 500px;
+    }
+    /* Initial preview styling */
+    #preview img {
+      max-width: 100%;
+      border-radius: 10px;
+      margin-top: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    }
+    #preview h2 {
+      margin-bottom: 10px;
+    }
+    /* Layout for final champion result */
+    .champion-result {
+      display: flex;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .champion-image {
+      flex: 1;
+      position: relative;
+    }
+    .champion-image img {
+      width: 100%;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+    }
+    .champion-details {
+      flex: 1;
+      overflow-y: auto;
+      max-height: 500px;
+      background: rgba(0,0,0,0.7);
+      padding: 10px;
+      border-radius: 10px;
+    }
+    .champion-details p,
+    .champion-details ul,
+    .champion-details h3 {
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>League of Legends Champion Roulette</h1>
+  <div id="appContainer">
+    <!-- Left Column: Roulette -->
+    <div id="leftColumn">
+      <div id="wheelContainer">
+        <canvas id="wheelCanvas" width="500" height="500"></canvas>
+        <div id="pointer"></div>
+      </div>
+      <button id="spinBtn">Spin</button>
+    </div>
+    <!-- Right Column: Live Preview / Final Result -->
+    <div id="rightColumn">
+      <div id="preview">
+        <h2>Preview</h2>
+        <p>The champion preview will appear here as the wheel spins.</p>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      let champions = [];
+      let totalChampions = 0;
+      let currentRotation = 0;
+      let spinning = false;
+      const canvas = document.getElementById('wheelCanvas');
+      const ctx = canvas.getContext('2d');
+      const spinBtn = document.getElementById('spinBtn');
+      const previewDiv = document.getElementById('preview');
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radius = Math.min(centerX, centerY) - 10;
+      
+      // Ease-out quadratic easing function.
+      function easeOutQuad(t) {
+        return t * (2 - t);
+      }
+      
+      // Updated leadership principles from Amazon (source: amazon.jobs)
+      const leadershipPrinciplesList = [
+        { key: "Customer Obsession", keywords: ["community", "people", "protect", "serve", "care"] },
+        { key: "Ownership", keywords: ["duty", "responsibility", "loyal", "honor", "vow"] },
+        { key: "Invent and Simplify", keywords: ["innovation", "invent", "creative", "arcane", "magic", "mystic", "simplify"] },
+        { key: "Are Right, A Lot", keywords: ["wisdom", "insight", "strategy", "knowledge", "experience", "judgment"] },
+        { key: "Learn and Be Curious", keywords: ["learn", "curious", "discover", "explore", "knowledge"] },
+        { key: "Hire and Develop the Best", keywords: ["mentor", "leader", "develop", "train", "inspire"] },
+        { key: "Insist on the Highest Standards", keywords: ["excellence", "perfection", "standards", "quality", "refinement"] },
+        { key: "Think Big", keywords: ["ambition", "vision", "dream", "grand", "destiny", "future"] },
+        { key: "Bias for Action", keywords: ["action", "fight", "battle", "swift", "charge", "attack"] },
+        { key: "Frugality", keywords: ["resourceful", "economical", "frugal", "efficient", "minimal"] },
+        { key: "Earn Trust", keywords: ["trust", "integrity", "reliable", "dependable"] },
+        { key: "Dive Deep", keywords: ["depth", "deep", "investigate", "understand", "complex"] },
+        { key: "Have Backbone; Disagree and Commit", keywords: ["courage", "stand firm", "backbone", "conviction", "resolve"] },
+        { key: "Deliver Results", keywords: ["victory", "results", "success", "achievement", "win"] },
+        { key: "Strive to be Earth's Best Employer", keywords: ["team", "culture", "employer", "support", "develop"] },
+        { key: "Success and Scale Bring Broad Responsibility", keywords: ["power", "responsibility", "impact", "scale", "influence"] }
+      ];
+  
+      const leadershipDescriptions = {
+        "Customer Obsession": "They prioritize the needs of others, demonstrating a commitment to serving their community.",
+        "Ownership": "They take full responsibility for their actions, embodying a strong sense of ownership.",
+        "Invent and Simplify": "Their innovative spirit and ability to simplify challenges reflect this principle.",
+        "Are Right, A Lot": "Their keen insight and sound judgment show they are right, a lot, in critical moments.",
+        "Learn and Be Curious": "Their endless pursuit of knowledge mirrors a deep curiosity and desire to learn.",
+        "Hire and Develop the Best": "They inspire and uplift those around them, much like developing top talent.",
+        "Insist on the Highest Standards": "Their relentless pursuit of excellence reflects an insistence on the highest standards.",
+        "Think Big": "They possess a grand vision and think big, aiming for transformative change.",
+        "Bias for Action": "Their readiness to act decisively illustrates a strong bias for action.",
+        "Frugality": "Their resourcefulness and efficiency highlight a commitment to frugality.",
+        "Earn Trust": "Their integrity and reliability have earned the trust of many.",
+        "Dive Deep": "They exhibit an ability to dive deep into challenges, uncovering critical insights.",
+        "Have Backbone; Disagree and Commit": "They show courage and conviction, standing firm in their beliefs while committing to decisions.",
+        "Deliver Results": "Their consistent achievements underscore their ability to deliver results.",
+        "Strive to be Earth's Best Employer": "They foster a supportive and empowering environment, reflecting top-tier leadership.",
+        "Success and Scale Bring Broad Responsibility": "They recognize that with success comes a responsibility to make a positive impact."
+      };
+  
+      // Map champion lore to leadership principles via keyword matching.
+      function mapLoreToLeadership(lore) {
+        const lowerLore = lore.toLowerCase();
+        let matchedPrinciples = {};
+        leadershipPrinciplesList.forEach(principle => {
+          principle.keywords.forEach(keyword => {
+            if (lowerLore.includes(keyword)) {
+              matchedPrinciples[principle.key] = leadershipDescriptions[principle.key];
+            }
+          });
+        });
+        if (Object.keys(matchedPrinciples).length === 0) {
+          matchedPrinciples["Deliver Results"] = leadershipDescriptions["Deliver Results"];
+        }
+        return matchedPrinciples;
+      }
+  
+      // Load champion data and preload images from Riot’s Data Dragon.
+      async function loadChampions() {
+        const version = "13.12.1";
+        try {
+          const response = await fetch(`https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`);
+          const data = await response.json();
+          champions = Object.values(data.data).map(champ => {
+            const iconUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${champ.id}.png`;
+            let img = new Image();
+            img.src = iconUrl;
+            return {
+              id: champ.id,
+              name: champ.name,
+              icon: iconUrl,
+              splash: `https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${champ.id}_0.jpg`,
+              img: img
+            };
+          });
+          totalChampions = champions.length;
+          await Promise.all(champions.map(champ => new Promise(resolve => {
+            champ.img.onload = resolve;
+            champ.img.onerror = resolve;
+          })));
+          drawWheel();
+          updatePreviewLive();
+        } catch (error) {
+          console.error("Error loading champions:", error);
+        }
+      }
+  
+      // Draw the roulette wheel with champion icon images filling each slice.
+      function drawWheel() {
+        const sliceAngle = 2 * Math.PI / totalChampions;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < totalChampions; i++) {
+          const startAngle = currentRotation + i * sliceAngle;
+          const endAngle = startAngle + sliceAngle;
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY);
+          ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+          ctx.closePath();
+          ctx.clip();
+  
+          let champ = champions[i];
+          if (champ.img.complete) {
+            ctx.drawImage(champ.img, centerX - radius, centerY - radius, radius * 2, radius * 2);
+          } else {
+            ctx.fillStyle = `hsl(${i * (360 / totalChampions)}, 70%, 50%)`;
+            ctx.fill();
+          }
+          ctx.restore();
+  
+          ctx.strokeStyle = "#222";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(centerX, centerY);
+          ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+  
+      // Identify which champion is under the pointer (at the top).
+      function getWinningChampion() {
+        const pointerAngle = -Math.PI / 2;
+        let rotation = currentRotation % (2 * Math.PI);
+        if (rotation < 0) rotation += 2 * Math.PI;
+        let adjustedAngle = (pointerAngle - rotation) % (2 * Math.PI);
+        if (adjustedAngle < 0) adjustedAngle += 2 * Math.PI;
+        const sliceAngle = 2 * Math.PI / totalChampions;
+        const index = Math.floor(adjustedAngle / sliceAngle);
+        return { champion: champions[index], index: index };
+      }
+  
+      // Update the live preview area with the champion currently at the pointer.
+      function updatePreviewLive() {
+        const currentChamp = getWinningChampion().champion;
+        previewDiv.innerHTML = `
+          <h2>Preview: ${currentChamp.name}</h2>
+          <img src="${currentChamp.icon}" alt="${currentChamp.name} Icon" style="width:200px; height:200px; border-radius:50%; border: 3px solid #f90;">
+        `;
+      }
+  
+      // Animate the spinning wheel over the given duration while updating the preview.
+      function spinWheel(finalRotation, duration) {
+        const startTime = performance.now();
+        const initialRotation = currentRotation;
+        return new Promise(resolve => {
+          function animate(now) {
+            const elapsed = now - startTime;
+            let t = Math.min(elapsed / duration, 1);
+            currentRotation = initialRotation + (finalRotation - initialRotation) * easeOutQuad(t);
+            drawWheel();
+            updatePreviewLive();
+            if (t < 1) {
+              requestAnimationFrame(animate);
+            } else {
+              resolve();
+            }
+          }
+          requestAnimationFrame(animate);
+        });
+      }
+  
+      // Fetch full champion details (including lore) from Data Dragon.
+      async function fetchChampionDetails(championId) {
+        const version = "13.12.1";
+        const response = await fetch(`https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion/${championId}.json`);
+        const data = await response.json();
+        return data.data[championId];
+      }
+  
+      // Spin button event handler.
+      spinBtn.addEventListener('click', async () => {
+        if (spinning || totalChampions === 0) return;
+        spinning = true;
+        spinBtn.disabled = true;
+  
+        const winningIndex = Math.floor(Math.random() * totalChampions);
+        const sliceAngle = 2 * Math.PI / totalChampions;
+        const pointerAngle = -Math.PI / 2;
+        let targetRotation = pointerAngle - (winningIndex + 0.5) * sliceAngle;
+        while (targetRotation < currentRotation) {
+          targetRotation += 2 * Math.PI;
+        }
+        const fullSpins = 5;
+        targetRotation += fullSpins * 2 * Math.PI;
+  
+        await spinWheel(targetRotation, 5000);
+  
+        const result = getWinningChampion();
+        const winningChampion = result.champion;
+  
+        try {
+          const champDetails = await fetchChampionDetails(winningChampion.id);
+          const lore = champDetails.lore;
+          const leadershipMapping = mapLoreToLeadership(lore);
+          previewDiv.innerHTML = `
+            <h2>${winningChampion.name}</h2>
+            <div class="champion-result">
+              <div class="champion-image">
+                <img src="${winningChampion.splash}" alt="${winningChampion.name} Splash Image">
+              </div>
+              <div class="champion-details">
+                <p><strong>Lore:</strong> ${lore}</p>
+                <h3>Leadership Principles Reflected:</h3>
+                <ul>
+                  ${Object.entries(leadershipMapping)
+                    .map(([key, value]) => `<li><strong>${key}:</strong> ${value}</li>`)
+                    .join('')}
+                </ul>
+              </div>
+            </div>
+          `;
+        } catch (error) {
+          previewDiv.innerHTML = `<p>Error fetching champion details.</p>`;
+          console.error(error);
+        }
+  
+        spinning = false;
+        spinBtn.disabled = false;
+      });
+  
+      loadChampions();
+    });
+  </script>
+</body>
+</html>
